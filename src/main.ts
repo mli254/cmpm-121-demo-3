@@ -38,10 +38,10 @@ leaflet
   })
   .addTo(map);
 
-// interface Geocoin {
-//   mintingLocation: Cell;
-//   serialNumber: number;
-// }
+interface Geocoin {
+  mintingLocation: Cell;
+  serialNumber: number;
+}
 
 const playerMarker = leaflet.marker(MERRILL_CLASSROOM);
 playerMarker.bindTooltip("That's you!");
@@ -63,25 +63,24 @@ statusPanel.innerHTML = "No coins yet...";
 
 function makeCache(i: number, j: number) {
   const bounds = board.getCellBounds({ i, j });
-  // const bounds = leaflet.latLngBounds([
-  //   [
-  //     MERRILL_CLASSROOM.lat + i * TILE_DEGREES,
-  //     MERRILL_CLASSROOM.lng + j * TILE_DEGREES,
-  //   ],
-  //   [
-  //     MERRILL_CLASSROOM.lat + (i + 1) * TILE_DEGREES,
-  //     MERRILL_CLASSROOM.lng + (j + 1) * TILE_DEGREES,
-  //   ],
-  // ]);
 
   const cache = leaflet.rectangle(bounds) as leaflet.Layer;
 
   cache.bindPopup(() => {
-    let value = Math.floor(luck([i, j, "initialValue"].toString()) * 100);
+    let value = Math.floor(luck([i, j, "initialValue"].toString()) * 10);
+    const coinCache = createCache(value, i, j);
     const container = document.createElement("div");
     container.innerHTML = `
-                <div>There is a cache here at "${i},${j}". It has value <span id="value">${value}</span>.</div>
-                <button id="collect">collect</button>
+                <div>There is a cache here at "${i},${j}". It has value <span id="value">${value}</span>.
+                <br>Available coins are:`;
+    coinCache.forEach(coin => {
+      const { i, j } = coin.mintingLocation;
+      const coinSerial = coin.serialNumber;
+      container.innerHTML += `${i}:${j}#${coinSerial}
+      <button id="collect${coinSerial}">collect this</button><br>`;
+    });
+    container.innerHTML += `<div>`;
+    container.innerHTML += `<button id="collect">collect</button>
                 <button id="deposit">deposit</button>`;
     const collect = container.querySelector<HTMLButtonElement>("#collect")!;
     collect.addEventListener("click", () => {
@@ -115,10 +114,19 @@ for (const cell of visibleCells) {
   }
 }
 
-// for (let i = -NEIGHBORHOOD_SIZE; i < NEIGHBORHOOD_SIZE; i++) {
-//   for (let j = -NEIGHBORHOOD_SIZE; j < NEIGHBORHOOD_SIZE; j++) {
-// if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY) {
-//   makeCache(i, j);
+function createCache(amount: number, i: number, j: number) {
+  const coinCache: Geocoin[] = [];
+  for (let a = 0; a < amount; a++) {
+    const coin: Geocoin = { mintingLocation: { i, j }, serialNumber: a };
+    coinCache.push(coin);
+  }
+  return coinCache;
+}
+
+// function collectCoin() {
+//   console.log("collect");
 // }
-//   }
+
+// function depositCoin() {
+//   console.log("deposit");
 // }
