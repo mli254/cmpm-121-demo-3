@@ -58,6 +58,7 @@ playerMarker.addTo(map);
 // });
 
 let coins = 0;
+const coinsCollected: Geocoin[] = [];
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
 statusPanel.innerHTML = "No coins yet...";
 
@@ -70,36 +71,46 @@ function makeCache(i: number, j: number) {
     let value = Math.floor(luck([i, j, "initialValue"].toString()) * 10);
     const coinCache = createCache(value, i, j);
     const container = document.createElement("div");
-    container.innerHTML = `
-                <div>There is a cache here at "${i},${j}". It has value <span id="value">${value}</span>.
-                <br>Available coins are:`;
-    coinCache.forEach(coin => {
-      const { i, j } = coin.mintingLocation;
-      const coinSerial = coin.serialNumber;
-      container.innerHTML += `${i}:${j}#${coinSerial}
-      <button id="collect${coinSerial}">collect this</button><br>`;
-    });
-    container.innerHTML += `<div>`;
-    container.innerHTML += `<button id="collect">collect</button>
-                <button id="deposit">deposit</button>`;
-    const collect = container.querySelector<HTMLButtonElement>("#collect")!;
-    collect.addEventListener("click", () => {
-      value--;
-      container.querySelector<HTMLSpanElement>("#value")!.innerHTML =
-        value.toString();
-      coins++;
-      statusPanel.innerHTML = `${coins} coins accumulated`;
-    });
+    writeCache(container, coinCache, i, j, value);
+
     const deposit = container.querySelector<HTMLButtonElement>("#deposit")!;
     deposit.addEventListener("click", () => {
       if (coins > 0) {
+        const depositCoin = coinsCollected.pop()!;
+        coinCache.push(depositCoin);
         value++;
         container.querySelector<HTMLSpanElement>("#value")!.innerHTML =
           value.toString();
         coins--;
-        statusPanel.innerHTML = `${coins} coins accumulated`;
+        statusPanel.innerHTML = `${coins} coins accumulated<br>Inventory:`;
+        coinsCollected.forEach(collectedCoin => {
+          const { i, j } = collectedCoin.mintingLocation;
+          const coinSerial = collectedCoin.serialNumber;
+          statusPanel.innerHTML += `<br>${i}:${j}#${coinSerial}`;
+        });
+        //writeCache(container, coinCache, i, j, value);
       }
     });
+    for (let index = 0; index < coinCache.length; index++) {
+      const collectButton = container.querySelector("#collect" + index)!;
+      collectButton.addEventListener("click", () => {
+        if (value > 0) {
+          value--;
+          container.querySelector<HTMLSpanElement>("#value")!.innerHTML =
+            value.toString();
+          coins++;
+          statusPanel.innerHTML = `${coins} coins accumulated<br>Inventory:`;
+
+          coinsCollected.push(coinCache[index]);
+          coinsCollected.forEach(collectedCoin => {
+            const { i, j } = collectedCoin.mintingLocation;
+            const coinSerial = collectedCoin.serialNumber;
+            statusPanel.innerHTML += `<br>${i}:${j}#${coinSerial}`;
+          });
+        }
+      });
+    }
+
     return container;
   });
   cache.addTo(map);
@@ -107,7 +118,6 @@ function makeCache(i: number, j: number) {
 
 const visibleCells: Cell[] = board.getCellsNearPoint(MERRILL_CLASSROOM);
 for (const cell of visibleCells) {
-  console.log(cell);
   const { i, j } = cell;
   if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY) {
     makeCache(i, j);
@@ -123,10 +133,16 @@ function createCache(amount: number, i: number, j: number) {
   return coinCache;
 }
 
-// function collectCoin() {
-//   console.log("collect");
-// }
-
-// function depositCoin() {
-//   console.log("deposit");
-// }
+function writeCache(container: HTMLDivElement, coinCache: Geocoin[], i: number, j: number, value: number) {
+  container.innerHTML = `
+                <div>There is a cache here at "${i},${j}". It has value <span id="value">${value}</span>.
+                <br>Available coins are:`;
+  coinCache.forEach(coin => {
+    const { i, j } = coin.mintingLocation;
+    const coinSerial = coin.serialNumber;
+    container.innerHTML += `${i}:${j}#${coinSerial}
+      <button id="collect${coinSerial}">collect</button><br>`;
+  });
+  container.innerHTML += `<div>`;
+  container.innerHTML += `<button id="deposit">deposit</button>`;
+}
