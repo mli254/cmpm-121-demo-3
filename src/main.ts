@@ -33,8 +33,7 @@ leaflet
   .tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution:
-      // eslint-disable-next-line @typescript-eslint/quotes
-      '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      "&copy; <a href=\"http://www.openstreetmap.org/copyright\">OpenStreetMap</a>",
   })
   .addTo(map);
 
@@ -69,6 +68,7 @@ function makeCache(i: number, j: number) {
 
   cache.bindPopup(() => {
     let value = Math.floor(luck([i, j, "initialValue"].toString()) * 10);
+
     const coinCache = createCache(value, i, j);
     const container = document.createElement("div");
     container.innerHTML = `
@@ -79,37 +79,24 @@ function makeCache(i: number, j: number) {
     container.innerHTML += `<div>`;
     container.innerHTML += `<button id="deposit">deposit</button>`;
 
+    value = createCollectButtons(container, coinCache, value);
+
     const deposit = container.querySelector<HTMLButtonElement>("#deposit")!;
     deposit.addEventListener("click", () => {
       if (coins > 0) {
         const depositCoin = coinsCollected.pop()!;
         coinCache.push(depositCoin);
 
-        value++;
+        value = coinCache.length;
         container.querySelector<HTMLSpanElement>("#value")!.innerHTML =
           value.toString();
-        coins--;
+        coins - coinsCollected.length;
+
         writeStatus();
         writeCache(container.querySelector<HTMLDivElement>("#inventory")!, coinCache);
         value = createCollectButtons(container, coinCache, value);
       }
     });
-    for (let index = 0; index < coinCache.length; index++) {
-      const collectButton = container.querySelector("#collect" + index)!;
-      collectButton.addEventListener("click", () => {
-        if (value > 0) {
-          value--;
-          container.querySelector<HTMLSpanElement>("#value")!.innerHTML =
-            value.toString();
-          coins++;
-          coinsCollected.push(coinCache[index]);
-          coinCache.splice(index, 1);
-          writeStatus();
-          writeCache(container.querySelector<HTMLDivElement>("#inventory")!, coinCache);
-          value = createCollectButtons(container, coinCache, value);
-        }
-      });
-    }
 
     return container;
   });
@@ -140,8 +127,8 @@ function writeCache(inventory: HTMLDivElement, coinCache: Geocoin[]) {
   for (let c = 0; c < coinCache.length; c++) {
     const { i, j } = coinCache[c].mintingLocation;
     const coinSerial = coinCache[c].serialNumber;
-    inventory.innerHTML += `${i}:${j}#${coinSerial}
-      <button id="collect${c}">collect</button><br>`;
+    inventory.innerHTML += `<div id="coin${c}">${i}:${j}#${coinSerial}
+      <button id="collect${c}">collect</button><div>`;
   }
 }
 
@@ -159,14 +146,17 @@ function createCollectButtons(container: HTMLDivElement, coinCache: Geocoin[], v
     const collectButton = container.querySelector("#collect" + index)!;
     collectButton.addEventListener("click", () => {
       if (value > 0) {
-        value--;
-        container.querySelector<HTMLSpanElement>("#value")!.innerHTML =
-          value.toString();
-        coins++;
         coinsCollected.push(coinCache[index]);
         coinCache.splice(index, 1);
+
+        value = coinCache.length;
+        container.querySelector<HTMLSpanElement>("#value")!.innerHTML =
+          value.toString();
+        coins = coinsCollected.length;
+
         writeStatus();
         writeCache(container.querySelector<HTMLDivElement>("#inventory")!, coinCache);
+        value = createCollectButtons(container, coinCache, value);
       }
     });
   }
