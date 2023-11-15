@@ -69,7 +69,7 @@ function makeCache(i: number, j: number) {
   cache.bindPopup(() => {
     let value = Math.floor(luck([i, j, "initialValue"].toString()) * 10);
 
-    const coinCache = createCache(value, i, j);
+    const coinCache = createCache(value, { i, j });
     const container = document.createElement("div");
     container.innerHTML = `
                 <div>There is a cache here at "${i},${j}". It has value <span id="value">${value}</span>.
@@ -113,10 +113,10 @@ for (const cell of visibleCells) {
   }
 }
 
-function createCache(amount: number, i: number, j: number) {
+function createCache(amount: number, cell: Cell) {
   const coinCache: Geocoin[] = [];
   for (let a = 0; a < amount; a++) {
-    const coin: Geocoin = { mintingLocation: { i, j }, serialNumber: a };
+    const coin: Geocoin = { mintingLocation: cell, serialNumber: a };
     coinCache.push(coin);
   }
   return coinCache;
@@ -128,7 +128,7 @@ function writeCache(inventory: HTMLDivElement, coinCache: Geocoin[]) {
     const { i, j } = coinCache[c].mintingLocation;
     const coinSerial = coinCache[c].serialNumber;
     inventory.innerHTML += `<div id="coin${c}">${i}:${j}#${coinSerial}
-      <button id="collect${c}">collect</button><div>`;
+      <button id="collect${c}">collect</button></div>`;
   }
 }
 
@@ -156,7 +156,7 @@ function createCollectButtons(container: HTMLDivElement, coinCache: Geocoin[], v
 
         writeStatus();
         writeCache(container.querySelector<HTMLDivElement>("#inventory")!, coinCache);
-        value = createCollectButtons(container, coinCache, value);
+        //value = createCollectButtons(container, coinCache, value);
       }
     });
   }
