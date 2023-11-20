@@ -42,6 +42,20 @@ interface Geocoin {
   serialNumber: number;
 }
 
+interface Geocache {
+  cell: Cell;
+  amount: number;
+  coinCache: Geocoin[];
+}
+
+const bus = new EventTarget();
+
+function notify(name: string) {
+  bus.dispatchEvent(new Event(name));
+}
+
+bus.addEventListener("status-panel-changed", writeStatus);
+
 const playerMarker = leaflet.marker(MERRILL_CLASSROOM);
 playerMarker.bindTooltip("That's you!");
 playerMarker.addTo(map);
@@ -56,84 +70,88 @@ playerMarker.addTo(map);
 //   });
 // });
 
-let coins = 0;
 const coinsCollected: Geocoin[] = [];
 const tilesSeen: Map<string, Cell> = new Map<string, Cell>();
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
-statusPanel.innerHTML = "No coins yet...";
 
-function makeCache(i: number, j: number) {
+function makeCache(cache: Geocache) {
+  const { i, j } = cache.cell;
   const bounds = board.getCellBounds({ i, j });
-  const cache = leaflet.rectangle(bounds) as leaflet.Layer;
+  const rectangle = leaflet.rectangle(bounds) as leaflet.Layer;
 
-  cache.bindPopup(() => {
-    let value = Math.floor(luck([i, j, "initialValue"].toString()) * 10);
-
-    const coinCache = createCache(value, { i, j });
+  rectangle.bindPopup(() => {
     const container = document.createElement("div");
-    container.innerHTML = `
-                <div>There is a cache here at "${i},${j}". It has value <span id="value">${value}</span>.
-                <br><br><div id="inventory"><div>`;
-    const inventory = container.querySelector<HTMLDivElement>("#inventory")!;
-    writeCache(inventory, coinCache);
-    container.innerHTML += `<div>`;
-    container.innerHTML += `<button id="deposit">deposit</button>`;
-
-    value = createCollectButtons(container, coinCache, value);
-
-    const deposit = container.querySelector<HTMLButtonElement>("#deposit")!;
-    deposit.addEventListener("click", () => {
-      if (coins > 0) {
-        const depositCoin = coinsCollected.pop()!;
-        coinCache.push(depositCoin);
-
-        value = coinCache.length;
-        container.querySelector<HTMLSpanElement>("#value")!.innerHTML =
-          value.toString();
-        coins - coinsCollected.length;
-
-        writeStatus();
-        writeCache(container.querySelector<HTMLDivElement>("#inventory")!, coinCache);
-        value = createCollectButtons(container, coinCache, value);
-      }
-    });
-
+    writeCache(container, cache);
+    writeStatus();
     return container;
   });
-  cache.addTo(map);
+  rectangle.addTo(map);
 }
 
 const visibleCells: Cell[] = board.getCellsNearPoint(MERRILL_CLASSROOM);
 for (const cell of visibleCells) {
   const { i, j } = cell;
   if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY) {
-    makeCache(i, j);
+    const cache = createCache(cell);
+    makeCache(cache);
     const key = [i, j].toString();
     tilesSeen.set(key, { i, j });
   }
 }
 
-function createCache(amount: number, cell: Cell) {
+//=============== FUNCTIONS BELOW ===============
+
+function createCache(cell: Cell) {
+  const { i, j } = cell;
+  const amount = Math.floor(luck([i, j, "initialValue"].toString()) * 10);
   const coinCache: Geocoin[] = [];
   for (let a = 0; a < amount; a++) {
     const coin: Geocoin = { mintingLocation: cell, serialNumber: a };
     coinCache.push(coin);
   }
-  return coinCache;
+
+  const thisGeoCache: Geocache = {
+    cell: cell,
+    amount: amount,
+    coinCache: coinCache
+  };
+  return thisGeoCache;
 }
 
-function writeCache(inventory: HTMLDivElement, coinCache: Geocoin[]) {
-  inventory.innerHTML = "Available coins are:<br>";
-  for (let c = 0; c < coinCache.length; c++) {
-    const { i, j } = coinCache[c].mintingLocation;
-    const coinSerial = coinCache[c].serialNumber;
-    inventory.innerHTML += `<div id="coin${c}">${i}:${j}#${coinSerial}
-      <button id="collect${c}">collect</button></div>`;
+function writeCache(container: HTMLDivElement, cache: Geocache) {
+  const { i, j } = cache.cell;
+  container.innerHTML = `<div>There is a cache here at "${i},${j}". It has value <span id="value">${cache.amount}</span>.
+  <br><br>`;
+  container.innerHTML += "Available coins are:<br>";
+  for (let c = 0; c < cache.coinCache.length; c++) {
+    const { i, j } = cache.coinCache[c].mintingLocation;
+    const coinSerial = cache.coinCache[c].serialNumber;
+    container.innerHTML += `${i}:${j}#${coinSerial}
+      <button id="collect${c}">collect</button><br>`;
+  }
+  container.innerHTML += `<button id="deposit">deposit</button></div>`;
+
+  const deposit = container.querySelector("#deposit")!;
+  deposit.addEventListener("click", () => {
+    if (coinsCollected.length > 0) {
+      depositCoin(coinsCollected[0], cache);
+      writeCache(container, cache);
+    }
+  });
+
+  for (let index = 0; index < cache.coinCache.length; index++) {
+    const collectButton = container.querySelector("#collect" + index)!;
+    collectButton.addEventListener("click", () => {
+      if (cache.amount > 0) {
+        collectCoin(cache.coinCache[index], cache);
+        writeCache(container, cache);
+      }
+    });
   }
 }
 
 function writeStatus() {
-  statusPanel.innerHTML = `${coins} coins accumulated<br>Inventory:`;
+  statusPanel.innerHTML = `${coinsCollected.length} coins accumulated<br>Inventory:`;
   coinsCollected.forEach(collectedCoin => {
     const { i, j } = collectedCoin.mintingLocation;
     const coinSerial = collectedCoin.serialNumber;
@@ -141,24 +159,18 @@ function writeStatus() {
   });
 }
 
-function createCollectButtons(container: HTMLDivElement, coinCache: Geocoin[], value: number) {
-  for (let index = 0; index < coinCache.length; index++) {
-    const collectButton = container.querySelector("#collect" + index)!;
-    collectButton.addEventListener("click", () => {
-      if (value > 0) {
-        coinsCollected.push(coinCache[index]);
-        coinCache.splice(index, 1);
+function collectCoin(coin: Geocoin, cache: Geocache) {
+  const index = cache.coinCache.indexOf(coin);
+  cache.coinCache.splice(index, 1);
+  coinsCollected.push(coin);
+  cache.amount--;
+  notify("status-panel-changed");
+}
 
-        value = coinCache.length;
-        container.querySelector<HTMLSpanElement>("#value")!.innerHTML =
-          value.toString();
-        coins = coinsCollected.length;
-
-        writeStatus();
-        writeCache(container.querySelector<HTMLDivElement>("#inventory")!, coinCache);
-        //value = createCollectButtons(container, coinCache, value);
-      }
-    });
-  }
-  return value;
+function depositCoin(coin: Geocoin, cache: Geocache) {
+  const index = coinsCollected.indexOf(coin);
+  coinsCollected.splice(index, 1);
+  cache.coinCache.push(coin);
+  cache.amount++;
+  notify("status-panel-changed");
 }

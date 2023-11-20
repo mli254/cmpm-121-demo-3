@@ -59,7 +59,7 @@ export class Board {
         const i = point.lat + x * this.tileWidth;
         const j = point.lng + y * this.tileWidth;
         const cell = { i, j };
-        resultCells.push(cell);
+        resultCells.push(this.getCanonicalCell(cell));
       }
     }
     return resultCells;
