@@ -42,10 +42,8 @@ interface Geocoin {
   serialNumber: number;
 }
 
-interface Geocache {
-  cell: Cell;
-  amount: number;
-  coinCache: Geocoin[];
+class Geocache {
+  constructor(readonly cell: Cell, public amount: number, public coinCache: Geocoin[]) { }
 }
 
 const bus = new EventTarget();
@@ -55,26 +53,21 @@ function notify(name: string) {
 }
 
 bus.addEventListener("status-panel-changed", writeStatus);
+bus.addEventListener("player-moved", drawMap);
 
 const playerMarker = leaflet.marker(MERRILL_CLASSROOM);
 playerMarker.bindTooltip("That's you!");
 playerMarker.addTo(map);
 
-// const sensorButton = document.querySelector("#sensor")!;
-// sensorButton.addEventListener("click", () => {
-//   navigator.geolocation.watchPosition((position) => {
-//     playerMarker.setLatLng(
-//       leaflet.latLng(position.coords.latitude, position.coords.longitude)
-//     );
-//     map.setView(playerMarker.getLatLng());
-//   });
-// });
-
 const coinsCollected: Geocoin[] = [];
-const tilesSeen: Map<string, Cell> = new Map<string, Cell>();
+const leafletRectangles: leaflet.Layer[] = [];
+const playerPositions: leaflet.LatLng[] = [];
+const tilesSeen: Map<string, Geocache> = new Map<string, Geocache>();
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
+let polyline = leaflet.polyline(playerPositions, { color: "red" }).addTo(map);
+let firstMove = true;
 
-function makeCache(cache: Geocache) {
+function drawCache(cache: Geocache) {
   const { i, j } = cache.cell;
   const bounds = board.getCellBounds({ i, j });
   const rectangle = leaflet.rectangle(bounds) as leaflet.Layer;
@@ -86,20 +79,37 @@ function makeCache(cache: Geocache) {
     return container;
   });
   rectangle.addTo(map);
+  return rectangle;
 }
 
-const visibleCells: Cell[] = board.getCellsNearPoint(MERRILL_CLASSROOM);
-for (const cell of visibleCells) {
-  const { i, j } = cell;
-  if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY) {
-    const cache = createCache(cell);
-    makeCache(cache);
-    const key = [i, j].toString();
-    tilesSeen.set(key, { i, j });
-  }
-}
+drawMap();
 
 //=============== FUNCTIONS BELOW ===============
+
+function drawMap() {
+  leafletRectangles.forEach(rectangle => {
+    rectangle.remove();
+  });
+  polyline.remove();
+  polyline = leaflet.polyline(playerPositions, { color: "red" }).addTo(map);
+  const visibleCells: Cell[] = board.getCellsNearPoint(playerMarker.getLatLng());
+  for (const cell of visibleCells) {
+    const { i, j } = cell;
+    if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY) {
+      const key = [i, j].toString();
+      if (!tilesSeen.has(key)) {
+        const cache = createCache(cell);
+        tilesSeen.set(key, cache);
+        const rectangle = drawCache(cache);
+        leafletRectangles.push(rectangle);
+      } else {
+        const cache = tilesSeen.get(key)!;
+        const rectangle = drawCache(cache);
+        leafletRectangles.push(rectangle);
+      }
+    }
+  }
+}
 
 function createCache(cell: Cell) {
   const { i, j } = cell;
@@ -174,3 +184,81 @@ function depositCoin(coin: Geocoin, cache: Geocache) {
   cache.amount++;
   notify("status-panel-changed");
 }
+
+//========= CONTROL PANEL =========
+const northButton = document.querySelector("#north")!;
+const southButton = document.querySelector("#south")!;
+const westButton = document.querySelector("#west")!;
+const eastButton = document.querySelector("#east")!;
+const sensorButton = document.querySelector("#sensor")!;
+
+northButton.addEventListener("click", () => {
+  const currentPosition = playerMarker.getLatLng();
+  if (firstMove) {
+    playerPositions.push(currentPosition);
+    firstMove = false;
+  }
+  playerMarker.setLatLng({
+    lat: currentPosition.lat + TILE_DEGREES,
+    lng: currentPosition.lng
+  });
+  map.setView(playerMarker.getLatLng());
+  playerPositions.push(playerMarker.getLatLng());
+  notify("player-moved");
+});
+
+southButton.addEventListener("click", () => {
+  const currentPosition = playerMarker.getLatLng();
+  if (firstMove) {
+    playerPositions.push(currentPosition);
+    firstMove = false;
+  }
+  playerMarker.setLatLng({
+    lat: currentPosition.lat - TILE_DEGREES,
+    lng: currentPosition.lng
+  });
+  map.setView(playerMarker.getLatLng());
+  playerPositions.push(playerMarker.getLatLng());
+  notify("player-moved");
+});
+
+eastButton.addEventListener("click", () => {
+  const currentPosition = playerMarker.getLatLng();
+  if (firstMove) {
+    playerPositions.push(currentPosition);
+    firstMove = false;
+  }
+  playerMarker.setLatLng({
+    lat: currentPosition.lat,
+    lng: currentPosition.lng + TILE_DEGREES
+  });
+  map.setView(playerMarker.getLatLng());
+  playerPositions.push(playerMarker.getLatLng());
+  notify("player-moved");
+});
+
+westButton.addEventListener("click", () => {
+  const currentPosition = playerMarker.getLatLng();
+  if (firstMove) {
+    playerPositions.push(currentPosition);
+    firstMove = false;
+  }
+  playerMarker.setLatLng({
+    lat: currentPosition.lat,
+    lng: currentPosition.lng - TILE_DEGREES
+  });
+  map.setView(playerMarker.getLatLng());
+  playerPositions.push(playerMarker.getLatLng());
+  notify("player-moved");
+});
+
+sensorButton.addEventListener("click", () => {
+  navigator.geolocation.watchPosition((position) => {
+    playerMarker.setLatLng(
+      leaflet.latLng(position.coords.latitude, position.coords.longitude)
+    );
+    map.setView(playerMarker.getLatLng());
+    playerPositions.push(playerMarker.getLatLng());
+    notify("player-moved");
+  });
+});
