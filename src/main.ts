@@ -60,9 +60,9 @@ playerMarker.bindTooltip("That's you!");
 playerMarker.addTo(map);
 
 const coinsCollected: Geocoin[] = [];
-const leafletRectangles: leaflet.Layer[] = [];
+const cacheRectangles: Map<Cell, leaflet.Layer> = new Map<Cell, leaflet.Layer>();
+const cacheData: Map<Cell, Geocache> = new Map<Cell, Geocache>();
 const playerPositions: leaflet.LatLng[] = [];
-const tilesSeen: Map<string, Geocache> = new Map<string, Geocache>();
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
 let polyline = leaflet.polyline(playerPositions, { color: "red" }).addTo(map);
 let firstMove = true;
@@ -87,25 +87,26 @@ drawMap();
 //=============== FUNCTIONS BELOW ===============
 
 function drawMap() {
-  leafletRectangles.forEach(rectangle => {
-    rectangle.remove();
+  const visibleCells: Cell[] = board.getCellsNearPoint(playerMarker.getLatLng());
+  cacheRectangles.forEach((rectangle, cell) => {
+    if (visibleCells.indexOf(cell) == -1) {
+      rectangle.remove();
+    }
   });
+
   polyline.remove();
   polyline = leaflet.polyline(playerPositions, { color: "red" }).addTo(map);
-  const visibleCells: Cell[] = board.getCellsNearPoint(playerMarker.getLatLng());
+
   for (const cell of visibleCells) {
     const { i, j } = cell;
     if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY) {
-      const key = [i, j].toString();
-      if (!tilesSeen.has(key)) {
+      if (!cacheData.has(cell)) {
         const cache = createCache(cell);
-        tilesSeen.set(key, cache);
+        cacheData.set(cell, cache);
         const rectangle = drawCache(cache);
-        leafletRectangles.push(rectangle);
+        cacheRectangles.set(cell, rectangle);
       } else {
-        const cache = tilesSeen.get(key)!;
-        const rectangle = drawCache(cache);
-        leafletRectangles.push(rectangle);
+        cacheRectangles.get(cell)?.addTo(map);
       }
     }
   }
@@ -191,6 +192,7 @@ const southButton = document.querySelector("#south")!;
 const westButton = document.querySelector("#west")!;
 const eastButton = document.querySelector("#east")!;
 const sensorButton = document.querySelector("#sensor")!;
+const resetButton = document.querySelector("#reset")!;
 
 northButton.addEventListener("click", () => {
   const currentPosition = playerMarker.getLatLng();
@@ -261,4 +263,9 @@ sensorButton.addEventListener("click", () => {
     playerPositions.push(playerMarker.getLatLng());
     notify("player-moved");
   });
+});
+
+resetButton.addEventListener("click", () => {
+  playerMarker.setLatLng(MERRILL_CLASSROOM);
+  map.setView(playerMarker.getLatLng());
 });
