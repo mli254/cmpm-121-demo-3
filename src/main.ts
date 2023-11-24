@@ -44,6 +44,10 @@ interface Geocoin {
 
 class Geocache {
   constructor(readonly cell: Cell, public amount: number, public coinCache: Geocoin[]) { }
+
+  toMemento() {
+    console.log("memento");
+  }
 }
 
 const bus = new EventTarget();
@@ -55,17 +59,19 @@ function notify(name: string) {
 bus.addEventListener("status-panel-changed", writeStatus);
 bus.addEventListener("player-moved", drawMap);
 
+const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
 const playerMarker = leaflet.marker(MERRILL_CLASSROOM);
 playerMarker.bindTooltip("That's you!");
 playerMarker.addTo(map);
 
-const coinsCollected: Geocoin[] = [];
+
 const cacheRectangles: Map<Cell, leaflet.Layer> = new Map<Cell, leaflet.Layer>();
 const cacheData: Map<Cell, Geocache> = new Map<Cell, Geocache>();
-const playerPositions: leaflet.LatLng[] = [];
-const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
+let coinsCollected: Geocoin[] = [];
+let playerPositions: leaflet.LatLng[] = [];
 let polyline = leaflet.polyline(playerPositions, { color: "red" }).addTo(map);
 let firstMove = true;
+
 
 function drawCache(cache: Geocache) {
   const { i, j } = cache.cell;
@@ -88,29 +94,31 @@ drawMap();
 
 function drawMap() {
   const visibleCells: Cell[] = board.getCellsNearPoint(playerMarker.getLatLng());
-  cacheRectangles.forEach((rectangle, cell) => {
-    if (visibleCells.indexOf(cell) == -1) {
-      rectangle.remove();
-    }
+  cacheRectangles.forEach((rectangle) => {
+    rectangle.remove();
   });
 
   polyline.remove();
   polyline = leaflet.polyline(playerPositions, { color: "red" }).addTo(map);
 
+  // for (const cell of visibleCells) {
+  //   const bounds = board.getCellBounds(cell);
+  //   leaflet.rectangle(bounds, { color: "red" }).addTo(map);
+  // }
+
   for (const cell of visibleCells) {
     const { i, j } = cell;
-    if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY) {
-      if (!cacheData.has(cell)) {
-        const cache = createCache(cell);
-        cacheData.set(cell, cache);
-        const rectangle = drawCache(cache);
-        cacheRectangles.set(cell, rectangle);
-      } else {
-        cacheRectangles.get(cell)?.addTo(map);
-      }
+    if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY && !cacheData.has(cell) && !cacheRectangles.has(cell)) {
+      const cache = createCache(cell);
+      cacheData.set(cell, cache);
+      const rectangle = drawCache(cache);
+      cacheRectangles.set(cell, rectangle);
+    } else {
+      cacheRectangles.get(cell)?.addTo(map);
     }
   }
 }
+
 
 function createCache(cell: Cell) {
   const { i, j } = cell;
@@ -120,12 +128,7 @@ function createCache(cell: Cell) {
     const coin: Geocoin = { mintingLocation: cell, serialNumber: a };
     coinCache.push(coin);
   }
-
-  const thisGeoCache: Geocache = {
-    cell: cell,
-    amount: amount,
-    coinCache: coinCache
-  };
+  const thisGeoCache = new Geocache(cell, amount, coinCache);
   return thisGeoCache;
 }
 
@@ -266,6 +269,17 @@ sensorButton.addEventListener("click", () => {
 });
 
 resetButton.addEventListener("click", () => {
+  cacheRectangles.forEach(rectangle => {
+    rectangle.remove();
+  });
+  playerPositions = [];
   playerMarker.setLatLng(MERRILL_CLASSROOM);
   map.setView(playerMarker.getLatLng());
+
+  cacheData.clear();
+  cacheRectangles.clear();
+  coinsCollected = [];
+  firstMove = true;
+  drawMap();
+  writeStatus();
 });
