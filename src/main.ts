@@ -43,10 +43,23 @@ interface Geocoin {
 }
 
 class Geocache {
-  constructor(readonly cell: Cell, public amount: number, public coinCache: Geocoin[]) { }
+  constructor(public cell: Cell, public amount: number, public coinCache: Geocoin[], public memento: string) { }
 
   toMemento() {
-    console.log("memento");
+    this.memento += JSON.stringify(this.cell) + "|";
+    this.memento += JSON.stringify(this.amount) + "|";
+    this.memento += JSON.stringify(this.coinCache) + "|";
+    return this.memento;
+  }
+
+  fromMemento(memento: string) {
+    const stringElements: string[] = memento.split("|");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    this.cell = JSON.parse(stringElements[0]);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    this.amount = JSON.parse(stringElements[1]);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    this.coinCache = JSON.parse(stringElements[2]);
   }
 }
 
@@ -56,14 +69,15 @@ function notify(name: string) {
   bus.dispatchEvent(new Event(name));
 }
 
-bus.addEventListener("status-panel-changed", writeStatus);
+bus.addEventListener("coin-amount-changed", writeStatus);
+bus.addEventListener("coin-amount-changed", storePlayerInfo);
 bus.addEventListener("player-moved", drawMap);
+bus.addEventListener("player-moved", storePlayerInfo);
 
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
 const playerMarker = leaflet.marker(MERRILL_CLASSROOM);
 playerMarker.bindTooltip("That's you!");
 playerMarker.addTo(map);
-
 
 const cacheRectangles: Map<Cell, leaflet.Layer> = new Map<Cell, leaflet.Layer>();
 const cacheData: Map<Cell, Geocache> = new Map<Cell, Geocache>();
@@ -72,6 +86,34 @@ let playerPositions: leaflet.LatLng[] = [];
 let polyline = leaflet.polyline(playerPositions, { color: "red" }).addTo(map);
 let firstMove = true;
 
+
+if (localStorage.getItem("playerInfo") != null) {
+  const stringElements: string[] = localStorage.getItem("playerInfo")!.split("|");
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const lat: number = JSON.parse(stringElements[0]);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const lng: number = JSON.parse(stringElements[1]);
+  const savedLatLng = leaflet.latLng({
+    lat: lat,
+    lng: lng
+  });
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  coinsCollected = JSON.parse(stringElements[2]);
+  playerMarker.setLatLng(savedLatLng);
+  map.setView(playerMarker.getLatLng());
+}
+
+function storePlayerInfo() {
+  const { lat, lng } = playerMarker.getLatLng();
+  let infoString = `${lat}|${lng}|`;
+  infoString += JSON.stringify(coinsCollected);
+  localStorage.setItem("playerInfo", infoString);
+}
+
+function storeCacheInfo(cache: Geocache) {
+  const { i, j } = cache.cell;
+  localStorage.setItem(`cache${i},${j}`, cache.toMemento());
+}
 
 function drawCache(cache: Geocache) {
   const { i, j } = cache.cell;
@@ -101,24 +143,26 @@ function drawMap() {
   polyline.remove();
   polyline = leaflet.polyline(playerPositions, { color: "red" }).addTo(map);
 
-  // for (const cell of visibleCells) {
-  //   const bounds = board.getCellBounds(cell);
-  //   leaflet.rectangle(bounds, { color: "red" }).addTo(map);
-  // }
-
   for (const cell of visibleCells) {
     const { i, j } = cell;
     if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY && !cacheData.has(cell) && !cacheRectangles.has(cell)) {
-      const cache = createCache(cell);
-      cacheData.set(cell, cache);
+      let cache: Geocache = new Geocache({ i: 0, j: 0 }, 0, [], "");
+      if (localStorage.getItem(`cache${i},${j}`) == null) {
+        cache = createCache(cell);
+        cacheData.set(cell, cache);
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        cache.fromMemento(localStorage.getItem(`cache${i},${j}`)!)!;
+        cacheData.set(cell, cache);
+      }
       const rectangle = drawCache(cache);
       cacheRectangles.set(cell, rectangle);
     } else {
       cacheRectangles.get(cell)?.addTo(map);
     }
   }
+  writeStatus();
 }
-
 
 function createCache(cell: Cell) {
   const { i, j } = cell;
@@ -128,7 +172,9 @@ function createCache(cell: Cell) {
     const coin: Geocoin = { mintingLocation: cell, serialNumber: a };
     coinCache.push(coin);
   }
-  const thisGeoCache = new Geocache(cell, amount, coinCache);
+  const thisGeoCache = new Geocache(cell, amount, coinCache, "");
+  thisGeoCache.memento = thisGeoCache.toMemento();
+  localStorage.setItem(`cache${i},${j}`, thisGeoCache.memento);
   return thisGeoCache;
 }
 
@@ -178,7 +224,8 @@ function collectCoin(coin: Geocoin, cache: Geocache) {
   cache.coinCache.splice(index, 1);
   coinsCollected.push(coin);
   cache.amount--;
-  notify("status-panel-changed");
+  storeCacheInfo(cache);
+  notify("coin-amount-changed");
 }
 
 function depositCoin(coin: Geocoin, cache: Geocache) {
@@ -186,7 +233,8 @@ function depositCoin(coin: Geocoin, cache: Geocache) {
   coinsCollected.splice(index, 1);
   cache.coinCache.push(coin);
   cache.amount++;
-  notify("status-panel-changed");
+  storeCacheInfo(cache);
+  notify("coin-amount-changed");
 }
 
 //========= CONTROL PANEL =========
@@ -281,5 +329,5 @@ resetButton.addEventListener("click", () => {
   coinsCollected = [];
   firstMove = true;
   drawMap();
-  writeStatus();
+  localStorage.clear();
 });
